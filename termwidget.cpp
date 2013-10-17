@@ -7,6 +7,7 @@
 #elif defined(USE_QTOPIA)
 #include <qwidget.h>
 #include <qtimer.h>
+#include <qpainter.h>
 #endif
 
 #include "termwidget.h"
@@ -135,6 +136,15 @@ void TermWidget::paintEvent(QPaintEvent *)
 
 	QRect rect2(0, 16, 16 * 4, 16);
 	painter.drawText(rect2, Qt::TextSingleLine, str);
+#elif defined(USE_QTOPIA)
+	QPainter painter(this);
+	QString str = "test";
+
+	QRect rect(0, 0, 16 * 4, 16);
+	painter.drawText(rect, Qt::SingleLine, str);
+
+	QRect rect2(0, 16, 16 * 4, 16);
+	painter.drawText(rect2, Qt::SingleLine, str);
 #endif
 }
 
