@@ -7,6 +7,7 @@
 #include <QTimer>
 #elif defined(USE_QTOPIA)
 #include <qwidget.h>
+#include <qtimer.h>
 #endif
 
 class TermWidget: public QWidget

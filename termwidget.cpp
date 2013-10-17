@@ -6,12 +6,15 @@
 #include <QPainter>
 #elif defined(USE_QTOPIA)
 #include <qwidget.h>
+#include <qtimer.h>
 #endif
 
 #include "termwidget.h"
 
 #include <pty.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -78,7 +81,7 @@ TermWidget::TermWidget()
         static const char *argv[] = {
             "bash", 0
         };
-		execve("/bin/bash", (char * const *)argv, environ);
+		execve("/bin/bash", (char * const *)argv, NULL);
     }
 
     qDebug("father");
@@ -123,6 +126,7 @@ void TermWidget::paintEvent(QPaintEvent *)
 {
     qDebug("paintEvent");
 
+#if defined(USE_QT4)
 	QPainter painter(this);
 	QString str = "test";
 
@@ -131,14 +135,18 @@ void TermWidget::paintEvent(QPaintEvent *)
 
 	QRect rect2(0, 16, 16 * 4, 16);
 	painter.drawText(rect2, Qt::TextSingleLine, str);
+#endif
 }
 
 void TermWidget::keyPressEvent(QKeyEvent *k)
 {
+#if defined(USE_QT4)
     qDebug("<keyPressEvent> - %d, %s",
            k->key(),
            k->text().toStdString().c_str());
-//    qDebug("<keyPressEvent>");
+#elif defined(USE_QTOPIA)
+    qDebug("<keyPressEvent> - %d", k->key());
+#endif
 	if(k->text().isEmpty()) {
         qDebug("text empty");
     } else {
@@ -157,8 +165,13 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
         return;
     }
 
+#if defined(USE_QT4)
     QByteArray data = k->text().toLocal8Bit();
 	int n = write(g_fd, data.constData(), data.count());
+#elif defined(USE_QTOPIA)
+    QByteArray data = k->text().local8Bit();
+	int n = write(g_fd, data.data(), data.count());
+#endif
     qDebug("write: %d", n);
 }
 
