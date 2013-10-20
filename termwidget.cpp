@@ -21,8 +21,8 @@
 #include <sys/wait.h>
 
 /* term */
-#define COLS 40
-#define ROWS 15
+#define COLS 80
+#define ROWS 24
 
 struct t_cell {
     char c;
@@ -120,7 +120,7 @@ TermWidget::TermWidget()
 		execve("/bin/bash", (char * const *)argv, NULL);
     }
 
-    qDebug("father");
+//    qDebug("father");
 
     g_pid = pid;
     g_fd = fd;
@@ -149,8 +149,8 @@ bool TermWidget::setCellFont(QFont &font)
     qDebug("cell_height = %d", cell_height);
 
 	QFontMetrics qm(font);
-    qDebug("%d", qm.width("Hello"));
-    qDebug("%d", qm.width("I"));
+//    qDebug("%d", qm.width("Hello"));
+//    qDebug("%d", qm.width("I"));
 
     return true;
 }
@@ -201,6 +201,9 @@ void TermWidget::paintEvent(QPaintEvent *)
         for(x = 0; x < COLS; x++) {
             str += QChar(cell[y][x].c);
         }
+        // if(y == 0) {
+        //     qDebug("str = %s", str.toStdString().c_str());
+        // }
         xdraws(painter, str, 0, y, COLS);
     }
 
@@ -255,6 +258,7 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
 
 /* term */
 void tsetchar(char c);
+void tmoveto(int x, int y);
 
 void treset(void)
 {
@@ -262,17 +266,17 @@ void treset(void)
 
     for(i = 0; i < ROWS; i++) {
         for(j = 0; j < COLS; j++) {
-            if(j == 0) {
-                cell[i][j].c = 'a';
-            } else if (j == 2) {
-                cell[i][j].c = (i + 1) / 10 + '0';
-            } else if (j == 3) {
-                cell[i][j].c = (i + 1) % 10 + '0';
-            } else if (j == COLS-1) {
-                cell[i][j].c = 'b';
-            } else {
+            // if(j == 0) {
+            //     cell[i][j].c = 'a';
+            // } else if (j == 2) {
+            //     cell[i][j].c = (i + 1) / 10 + '0';
+            // } else if (j == 3) {
+            //     cell[i][j].c = (i + 1) % 10 + '0';
+            // } else if (j == COLS-1) {
+            //     cell[i][j].c = 'b';
+            // } else {
                 cell[i][j].c = ' ';
-            }
+            // }
         }
         dirty[i] = 1;
     }
@@ -287,14 +291,26 @@ void tputc(char c)
     switch(c) {
     default:
         tsetchar(c);
+        tmoveto(cursor_x + 1, cursor_y);
         break;
     }
 }
 
 void tsetchar(char c)
 {
-//    cell[cursor_y][cursor_x].c = c;
-//    dirty[cursor_y] = 1;
+    cell[cursor_y][cursor_x].c = c;
+    dirty[cursor_y] = 1;
+}
+
+void tmoveto(int x, int y)
+{
+    if(x < 0) x = 0;
+    if(x > COLS - 1) x = COLS - 1;
+    if(y < 0) y = 0;
+    if(y > ROWS - 1) y = ROWS - 1;
+
+    cursor_x = x;
+    cursor_y = y;
 }
 
 /* screen */
