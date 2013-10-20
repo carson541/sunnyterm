@@ -31,6 +31,7 @@ struct t_cell {
 struct t_cell cell[ROWS][COLS];
 int dirty[ROWS];
 int cursor_x, cursor_y;
+int cursor_state;
 int esc;
 
 void treset(void);
@@ -257,8 +258,12 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
 }
 
 /* term */
+#define CURSOR_DEFAULT        0
+#define CURSOR_WRAPNEXT       1
+
 void tsetchar(char c);
 void tmoveto(int x, int y);
+void tnewline(int first_col);
 
 void treset(void)
 {
@@ -282,6 +287,7 @@ void treset(void)
     }
 
     cursor_x = 0, cursor_y = 0;
+    cursor_state = CURSOR_DEFAULT;
 
     esc = 0;
 }
@@ -290,8 +296,15 @@ void tputc(char c)
 {
     switch(c) {
     default:
+        if(cursor_state & CURSOR_WRAPNEXT) {
+            tnewline(1);
+        }
         tsetchar(c);
-        tmoveto(cursor_x + 1, cursor_y);
+        if(cursor_x + 1 < COLS) {
+            tmoveto(cursor_x + 1, cursor_y);
+        } else {
+            cursor_state |= CURSOR_WRAPNEXT;
+        }
         break;
     }
 }
@@ -311,6 +324,15 @@ void tmoveto(int x, int y)
 
     cursor_x = x;
     cursor_y = y;
+    cursor_state &= ~CURSOR_WRAPNEXT;
+}
+
+void tnewline(int first_col)
+{
+    int y = cursor_y;
+    y++;
+
+    tmoveto(first_col ? 0 : cursor_x, y);
 }
 
 /* screen */
