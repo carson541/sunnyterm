@@ -3,6 +3,7 @@
 
 #if defined(USE_QT4)
 #include <QWidget>
+#include <QFont>
 #include <QKeyEvent>
 #include <QTimer>
 #elif defined(USE_QTOPIA)
@@ -16,6 +17,7 @@ class TermWidget: public QWidget
 
 public:
     TermWidget();
+	bool setCellFont(QFont &font);
 
 private slots:
     void  doRead();
@@ -26,6 +28,7 @@ protected:
 
 private:
     QTimer *readTimer;
+	QFont cell_font;
 };
 
 #endif /* _TERMWIDGET_H_ */

@@ -1,5 +1,6 @@
 #if defined(USE_QT4)
 #include <QWidget>
+#include <QFont>
 #include <QKeyEvent>
 #include <QTimer>
 #include <QColor>
@@ -19,14 +20,32 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+/* term */
+#define COLS 40
+#define ROWS 15
+
+struct t_cell {
+    char c;
+};
+
+struct t_cell cell[ROWS][COLS];
+int dirty[ROWS];
+int cursor_x, cursor_y;
+int esc;
+
 void treset(void);
 void tputc(char c);
 
+/* screen */
 void draw(QWidget *w);
+void xdraws(QPainter &painter, QString str, int x, int y, int len);
 
 /* widget */
 pid_t g_pid;
 int g_fd;
+
+int	cell_width = 16;
+int	cell_height = 16;
 
 void sigchld(int)
 {
@@ -53,7 +72,7 @@ void ttyread(void)
         qDebug("read %d", count);
     }
 
-#if 1                                           \
+#if 1
     // dump
     for(i = 0; i < count; i++) {
         if(i % 16 == 0 && i != 0) printf("\n");
@@ -72,6 +91,22 @@ TermWidget::TermWidget()
 {
 	pid_t pid;
 	int fd;
+
+//	QFont font("Terminus");
+//	QFont font("Ubuntu Mono");
+//    cell_font = font;
+//	font.setPixelSize(12);
+	QFont font("Bitstream Vera Sans Mono", 15);
+//	font.setPixelSize(20);
+//    font.setFixedPitch(true);
+//    font.setKerning(false);
+	setCellFont(font);
+
+    QFontInfo info(font);
+    QString family = info.family();
+    qDebug("family = %s", family.toStdString().c_str());
+
+    setGeometry(600, 200, cell_width * COLS + 2, cell_height * ROWS);
 
     if((pid = forkpty(&fd, NULL, NULL, NULL)) < 0) {
 		perror("forkpty");
@@ -100,9 +135,29 @@ TermWidget::TermWidget()
     treset();
 }
 
+bool TermWidget::setCellFont(QFont &font)
+{
+	cell_font = font;
+	cell_font.setFixedPitch(true);
+	cell_font.setKerning(false);
+	cell_font.setStyleHint(QFont::TypeWriter);
+
+	QFontMetrics fm(font);
+	cell_width  = fm.width('X');
+	cell_height = fm.height();
+    qDebug("cell_width = %d", cell_width);
+    qDebug("cell_height = %d", cell_height);
+
+	QFontMetrics qm(font);
+    qDebug("%d", qm.width("Hello"));
+    qDebug("%d", qm.width("I"));
+
+    return true;
+}
+
 void TermWidget::doRead()
 {
-    qDebug("doRead");
+//    qDebug("doRead");
 	fd_set rfd;
     FD_ZERO(&rfd);
     FD_SET(g_fd, &rfd);
@@ -125,17 +180,30 @@ void TermWidget::doRead()
 
 void TermWidget::paintEvent(QPaintEvent *)
 {
-    qDebug("paintEvent");
+//    qDebug("paintEvent");
 
 #if defined(USE_QT4)
 	QPainter painter(this);
-	QString str = "test";
+//	QString str =  "01234567890123456789";
+//	QString str2 = "testtesttesttesttesb";
 
-	QRect rect(0, 0, 16 * 4, 16);
-	painter.drawText(rect, Qt::TextSingleLine, str);
+    painter.setFont(cell_font);
 
-	QRect rect2(0, 16, 16 * 4, 16);
-	painter.drawText(rect2, Qt::TextSingleLine, str);
+//	QRect rect(0, 0, 16 * 40, 16);
+//	painter.drawText(rect, Qt::TextSingleLine, str);
+
+//	QRect rect2(0, 16, 16 * 40, 16 * 2);
+//	painter.drawText(rect2, Qt::TextSingleLine, str2);
+
+    int x, y;
+    for(y = 0; y < ROWS; y++) {
+        QString str;
+        for(x = 0; x < COLS; x++) {
+            str += QChar(cell[y][x].c);
+        }
+        xdraws(painter, str, 0, y, COLS);
+    }
+
 #elif defined(USE_QTOPIA)
 	QPainter painter(this);
 	QString str = "test";
@@ -186,18 +254,6 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
 }
 
 /* term */
-#define COLS 80
-#define ROWS 24
-
-struct t_cell {
-    char c;
-};
-
-struct t_cell cell[ROWS][COLS];
-int dirty[ROWS];
-int cursor_x, cursor_y;
-int esc;
-
 void tsetchar(char c);
 
 void treset(void)
@@ -206,7 +262,17 @@ void treset(void)
 
     for(i = 0; i < ROWS; i++) {
         for(j = 0; j < COLS; j++) {
-            cell[i][j].c = 'a';
+            if(j == 0) {
+                cell[i][j].c = 'a';
+            } else if (j == 2) {
+                cell[i][j].c = (i + 1) / 10 + '0';
+            } else if (j == 3) {
+                cell[i][j].c = (i + 1) % 10 + '0';
+            } else if (j == COLS-1) {
+                cell[i][j].c = 'b';
+            } else {
+                cell[i][j].c = ' ';
+            }
         }
         dirty[i] = 1;
     }
@@ -235,4 +301,15 @@ void tsetchar(char c)
 void draw(QWidget *w)
 {
     w->update();
+}
+
+void xdraws(QPainter &painter, QString str, int x, int y, int len)
+{
+//	QString str;
+//    str += "aaa ";
+//    str += QChar((y + 1) / 10 + '0');
+//    str += QChar((y + 1) % 10 + '0');
+	QRect rect(x * cell_width, y * cell_height,
+		cell_width * len, cell_height);
+	painter.drawText(rect, Qt::TextSingleLine, str);
 }

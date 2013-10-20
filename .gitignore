@@ -1,2 +1,5 @@
 .emacs.desktop*
 Makefile
+*.o
+moc_*.cpp
+sunnyterm
