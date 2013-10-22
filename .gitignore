@@ -3,3 +3,5 @@ Makefile
 *.o
 moc_*.cpp
 sunnyterm
+TAGS
+cscope.*

@@ -52,7 +52,7 @@ void sigchld(int)
 {
 	int stat = 0;
 	if(waitpid(g_pid, &stat, 0) < 0) {
-        printf("Waiting for pid filed.\n");
+        printf("Waiting for pid failed.\n");
     }
 	if(WIFEXITED(stat))
 		exit(WEXITSTATUS(stat));
@@ -70,10 +70,10 @@ void ttyread(void)
     count = read(g_fd, buf, sizeof(buf));
 
     if(count > 0) {
-        qDebug("read %d", count);
+        // qDebug("read %d", count);
     }
 
-#if 1
+#if 0
     // dump
     for(i = 0; i < count; i++) {
         if(i % 16 == 0 && i != 0) printf("\n");
@@ -105,7 +105,7 @@ TermWidget::TermWidget()
 
     QFontInfo info(font);
     QString family = info.family();
-    qDebug("family = %s", family.toStdString().c_str());
+    // qDebug("family = %s", family.toStdString().c_str());
 
     setGeometry(600, 200, cell_width * COLS + 2, cell_height * ROWS);
 
@@ -146,8 +146,8 @@ bool TermWidget::setCellFont(QFont &font)
 	QFontMetrics fm(font);
 	cell_width  = fm.width('X');
 	cell_height = fm.height();
-    qDebug("cell_width = %d", cell_width);
-    qDebug("cell_height = %d", cell_height);
+    // qDebug("cell_width = %d", cell_width);
+    // qDebug("cell_height = %d", cell_height);
 
 	QFontMetrics qm(font);
 //    qDebug("%d", qm.width("Hello"));
@@ -223,21 +223,21 @@ void TermWidget::paintEvent(QPaintEvent *)
 void TermWidget::keyPressEvent(QKeyEvent *k)
 {
 #if defined(USE_QT4)
-    qDebug("<keyPressEvent> - %d, %s",
-           k->key(),
-           k->text().toStdString().c_str());
+    // qDebug("<keyPressEvent> - %d, %s",
+    //        k->key(),
+    //        k->text().toStdString().c_str());
 #elif defined(USE_QTOPIA)
-    qDebug("<keyPressEvent> - %d", k->key());
+    // qDebug("<keyPressEvent> - %d", k->key());
 #endif
 	if(k->text().isEmpty()) {
-        qDebug("text empty");
+//        qDebug("text empty");
     } else {
-        qDebug("text not empty");
+//        qDebug("text not empty");
     }
 
     switch(k->key()) {
     case Qt::Key_Return:
-        qDebug("<keyPressEvent>: Key_Return");
+        // qDebug("<keyPressEvent>: Key_Return");
         break;
     default:
         break;
@@ -254,16 +254,40 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
     QByteArray data = k->text().local8Bit();
 	int n = write(g_fd, data.data(), data.count());
 #endif
-    qDebug("write: %d", n);
+    // qDebug("write: %d", n);
 }
 
 /* term */
+#define ESC_BUF_SIZ   256
+#define ESC_ARG_SIZ   16
+
 #define CURSOR_DEFAULT        0
 #define CURSOR_WRAPNEXT       1
+
+#define ESC_START             1
+#define ESC_CSI               2
+
+/* CSI Escape sequence structs */
+/* ESC '[' [[ [<priv>] <arg> [;]] <mode>] */
+typedef struct {
+	char buf[ESC_BUF_SIZ]; /* raw string */
+	int len;               /* raw string length */
+	char priv;
+	int arg[ESC_ARG_SIZ];
+	int narg;              /* nb of args */
+	char mode;
+} CSIEscape;
+
+static CSIEscape escseq;
 
 void tsetchar(char c);
 void tmoveto(int x, int y);
 void tnewline(int first_col);
+
+void csireset(void);
+void csiparse(void);
+void csihandle(void);
+void csidump(void);
 
 void treset(void)
 {
@@ -294,18 +318,49 @@ void treset(void)
 
 void tputc(char c)
 {
-    switch(c) {
-    default:
-        if(cursor_state & CURSOR_WRAPNEXT) {
-            tnewline(1);
-        }
-        tsetchar(c);
-        if(cursor_x + 1 < COLS) {
-            tmoveto(cursor_x + 1, cursor_y);
+	if(esc & ESC_START) {
+		if(esc & ESC_CSI) {
+			escseq.buf[escseq.len++] = c;
+			if((c >= 0x40 && c <= 0x7E) || escseq.len >= ESC_BUF_SIZ) {
+				esc = 0;
+				csiparse();
+                csihandle();
+			}
         } else {
-            cursor_state |= CURSOR_WRAPNEXT;
+            switch(c) {
+			case '[':
+				esc |= ESC_CSI;
+				break;
+            default:
+                printf("unknown sequence ESC 0x%02X '%c'\n", c, isprint(c)? c : '.');
+                esc = 0;
+                break;
+            }
         }
-        break;
+    } else {
+        switch(c) {
+        case '\r':
+            tmoveto(0, cursor_y);
+            break;
+        case '\n':
+            tnewline(0);
+            break;
+        case '\033':
+            csireset();
+            esc = ESC_START;
+            break;
+        default:
+            if(cursor_state & CURSOR_WRAPNEXT) {
+                tnewline(1);
+            }
+            tsetchar(c);
+            if(cursor_x + 1 < COLS) {
+                tmoveto(cursor_x + 1, cursor_y);
+            } else {
+                cursor_state |= CURSOR_WRAPNEXT;
+            }
+            break;
+        }
     }
 }
 
@@ -333,6 +388,60 @@ void tnewline(int first_col)
     y++;
 
     tmoveto(first_col ? 0 : cursor_x, y);
+}
+
+void csireset(void)
+{
+	memset(&escseq, 0, sizeof(escseq));
+}
+
+void csiparse(void)
+{
+	/* int noarg = 1; */
+	char *p = escseq.buf;
+
+	escseq.narg = 0;
+	if(*p == '?')
+		escseq.priv = 1, p++;
+
+	while(p < escseq.buf + escseq.len) {
+		while(isdigit(*p)) {
+			escseq.arg[escseq.narg] *= 10;
+			escseq.arg[escseq.narg] += *p++ - '0'/*, noarg = 0 */;
+		}
+		if(*p == ';' && escseq.narg+1 < ESC_ARG_SIZ)
+			escseq.narg++, p++;
+		else {
+			escseq.mode = *p;
+			escseq.narg++;
+			return;
+		}
+	}
+}
+
+void csihandle(void)
+{
+	switch(escseq.mode) {
+	default:
+        printf("unknown csi ");
+        csidump();
+		break;
+    }
+}
+
+void csidump(void)
+{
+	int i;
+	printf("ESC[");
+	for(i = 0; i < escseq.len; i++) {
+		uint c = escseq.buf[i] & 0xff;
+		if(isprint(c)) putchar(c);
+		else if(c == '\n') printf("(\\n)");
+		else if(c == '\r') printf("(\\r)");
+		else if(c == 0x1b) printf("(\\e)");
+		else printf("(%02x)", c);
+	}
+	putchar('\n');
 }
 
 /* screen */
