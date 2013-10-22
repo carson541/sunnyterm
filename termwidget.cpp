@@ -7,6 +7,7 @@
 #include <QPainter>
 #elif defined(USE_QTOPIA)
 #include <qwidget.h>
+#include <qfont.h>
 #include <qtimer.h>
 #include <qpainter.h>
 #endif
@@ -16,6 +17,7 @@
 #include <pty.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -107,7 +109,11 @@ TermWidget::TermWidget()
     QString family = info.family();
     // qDebug("family = %s", family.toStdString().c_str());
 
+#if defined(USE_QT4)
     setGeometry(600, 200, cell_width * COLS + 2, cell_height * ROWS);
+#elif defined(USE_QTOPIA)
+    setGeometry(10, 30, cell_width * COLS + 2, cell_height * ROWS);
+#endif
 
     if((pid = forkpty(&fd, NULL, NULL, NULL)) < 0) {
 		perror("forkpty");
@@ -140,7 +146,9 @@ bool TermWidget::setCellFont(QFont &font)
 {
 	cell_font = font;
 	cell_font.setFixedPitch(true);
+#if defined(USE_QT4)
 	cell_font.setKerning(false);
+#endif
 	cell_font.setStyleHint(QFont::TypeWriter);
 
 	QFontMetrics fm(font);
@@ -183,18 +191,9 @@ void TermWidget::paintEvent(QPaintEvent *)
 {
 //    qDebug("paintEvent");
 
-#if defined(USE_QT4)
 	QPainter painter(this);
-//	QString str =  "01234567890123456789";
-//	QString str2 = "testtesttesttesttesb";
 
     painter.setFont(cell_font);
-
-//	QRect rect(0, 0, 16 * 40, 16);
-//	painter.drawText(rect, Qt::TextSingleLine, str);
-
-//	QRect rect2(0, 16, 16 * 40, 16 * 2);
-//	painter.drawText(rect2, Qt::TextSingleLine, str2);
 
     int x, y;
     for(y = 0; y < ROWS; y++) {
@@ -207,17 +206,6 @@ void TermWidget::paintEvent(QPaintEvent *)
         // }
         xdraws(painter, str, 0, y, COLS);
     }
-
-#elif defined(USE_QTOPIA)
-	QPainter painter(this);
-	QString str = "test";
-
-	QRect rect(0, 0, 16 * 4, 16);
-	painter.drawText(rect, Qt::SingleLine, str);
-
-	QRect rect2(0, 16, 16 * 4, 16);
-	painter.drawText(rect2, Qt::SingleLine, str);
-#endif
 }
 
 void TermWidget::keyPressEvent(QKeyEvent *k)
@@ -332,7 +320,8 @@ void tputc(char c)
 				esc |= ESC_CSI;
 				break;
             default:
-                printf("unknown sequence ESC 0x%02X '%c'\n", c, isprint(c)? c : '.');
+                printf("unknown sequence ESC 0x%02X '%c'\n",
+                       c, isprint(c)? c : '.');
                 esc = 0;
                 break;
             }
@@ -458,5 +447,9 @@ void xdraws(QPainter &painter, QString str, int x, int y, int len)
 //    str += QChar((y + 1) % 10 + '0');
 	QRect rect(x * cell_width, y * cell_height,
 		cell_width * len, cell_height);
+#if defined(USE_QT4)
 	painter.drawText(rect, Qt::TextSingleLine, str);
+#elif defined(USE_QTOPIA)
+	painter.drawText(rect, Qt::SingleLine, str);
+#endif
 }
