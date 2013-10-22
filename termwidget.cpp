@@ -34,7 +34,6 @@ struct t_cell cell[ROWS][COLS];
 int dirty[ROWS];
 int cursor_x, cursor_y;
 int cursor_state;
-int esc;
 
 void treset(void);
 void tputc(char c);
@@ -47,25 +46,25 @@ void xdraws(QPainter &painter, QString str, int x, int y, int len);
 pid_t g_pid;
 int g_fd;
 
-int	cell_width = 16;
-int	cell_height = 16;
+int cell_width = 16;
+int cell_height = 16;
 
 void sigchld(int)
 {
-	int stat = 0;
-	if(waitpid(g_pid, &stat, 0) < 0) {
+    int stat = 0;
+    if(waitpid(g_pid, &stat, 0) < 0) {
         printf("Waiting for pid failed.\n");
     }
-	if(WIFEXITED(stat))
-		exit(WEXITSTATUS(stat));
-	else
-		exit(EXIT_FAILURE);
+    if(WIFEXITED(stat))
+        exit(WEXITSTATUS(stat));
+    else
+        exit(EXIT_FAILURE);
 }
 
 void ttyread(void)
 {
-	char buf[256];
-	int count;
+    char buf[256];
+    int count;
     char c;
     int i;
 
@@ -92,18 +91,18 @@ void ttyread(void)
 
 TermWidget::TermWidget()
 {
-	pid_t pid;
-	int fd;
+    pid_t pid;
+    int fd;
 
-//	QFont font("Terminus");
-//	QFont font("Ubuntu Mono");
+//  QFont font("Terminus");
+//  QFont font("Ubuntu Mono");
 //    cell_font = font;
-//	font.setPixelSize(12);
-	QFont font("Bitstream Vera Sans Mono", 15);
-//	font.setPixelSize(20);
+//  font.setPixelSize(12);
+    QFont font("Bitstream Vera Sans Mono", 15);
+//  font.setPixelSize(20);
 //    font.setFixedPitch(true);
 //    font.setKerning(false);
-	setCellFont(font);
+    setCellFont(font);
 
     QFontInfo info(font);
     QString family = info.family();
@@ -116,15 +115,15 @@ TermWidget::TermWidget()
 #endif
 
     if((pid = forkpty(&fd, NULL, NULL, NULL)) < 0) {
-		perror("forkpty");
+        perror("forkpty");
         return;
-	}
+    }
 
-	if (pid == 0) {
+    if (pid == 0) {
         static const char *argv[] = {
             "bash", 0
         };
-		execve("/bin/bash", (char * const *)argv, NULL);
+        execve("/bin/bash", (char * const *)argv, NULL);
     }
 
 //    qDebug("father");
@@ -136,7 +135,7 @@ TermWidget::TermWidget()
 
     readTimer = new QTimer(this);
     connect(readTimer, SIGNAL(timeout()),
-	     this, SLOT(doRead()));
+         this, SLOT(doRead()));
     readTimer->start(1000);
 
     treset();
@@ -144,20 +143,20 @@ TermWidget::TermWidget()
 
 bool TermWidget::setCellFont(QFont &font)
 {
-	cell_font = font;
-	cell_font.setFixedPitch(true);
+    cell_font = font;
+    cell_font.setFixedPitch(true);
 #if defined(USE_QT4)
-	cell_font.setKerning(false);
+    cell_font.setKerning(false);
 #endif
-	cell_font.setStyleHint(QFont::TypeWriter);
+    cell_font.setStyleHint(QFont::TypeWriter);
 
-	QFontMetrics fm(font);
-	cell_width  = fm.width('X');
-	cell_height = fm.height();
+    QFontMetrics fm(font);
+    cell_width  = fm.width('X');
+    cell_height = fm.height();
     // qDebug("cell_width = %d", cell_width);
     // qDebug("cell_height = %d", cell_height);
 
-	QFontMetrics qm(font);
+    QFontMetrics qm(font);
 //    qDebug("%d", qm.width("Hello"));
 //    qDebug("%d", qm.width("I"));
 
@@ -167,13 +166,13 @@ bool TermWidget::setCellFont(QFont &font)
 void TermWidget::doRead()
 {
 //    qDebug("doRead");
-	fd_set rfd;
+    fd_set rfd;
     FD_ZERO(&rfd);
     FD_SET(g_fd, &rfd);
-	struct timeval timeout = {0,0};
+    struct timeval timeout = {0,0};
     timeout.tv_sec  = 0;
     timeout.tv_usec = 20 * 1000; // 20 ms
-//	bool stuff_to_print = 0;
+//  bool stuff_to_print = 0;
 
     if(select(g_fd + 1, &rfd, NULL, NULL, &timeout) < 0) {
         return;
@@ -191,7 +190,7 @@ void TermWidget::paintEvent(QPaintEvent *)
 {
 //    qDebug("paintEvent");
 
-	QPainter painter(this);
+    QPainter painter(this);
 
     painter.setFont(cell_font);
 
@@ -217,7 +216,7 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
 #elif defined(USE_QTOPIA)
     // qDebug("<keyPressEvent> - %d", k->key());
 #endif
-	if(k->text().isEmpty()) {
+    if(k->text().isEmpty()) {
 //        qDebug("text empty");
     } else {
 //        qDebug("text not empty");
@@ -231,18 +230,19 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
         break;
     }
 
-	if(k->text().isEmpty()) {
+    if(k->text().isEmpty()) {
         return;
     }
 
 #if defined(USE_QT4)
     QByteArray data = k->text().toLocal8Bit();
-	int n = write(g_fd, data.constData(), data.count());
+    int n = write(g_fd, data.constData(), data.count());
 #elif defined(USE_QTOPIA)
     QByteArray data = k->text().local8Bit();
-	int n = write(g_fd, data.data(), data.count());
+    int n = write(g_fd, data.data(), data.count());
 #endif
     // qDebug("write: %d", n);
+    n = n; // dummy
 }
 
 /* term */
@@ -258,19 +258,24 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
 /* CSI Escape sequence structs */
 /* ESC '[' [[ [<priv>] <arg> [;]] <mode>] */
 typedef struct {
-	char buf[ESC_BUF_SIZ]; /* raw string */
-	int len;               /* raw string length */
-	char priv;
-	int arg[ESC_ARG_SIZ];
-	int narg;              /* nb of args */
-	char mode;
+    char buf[ESC_BUF_SIZ]; /* raw string */
+    int len;               /* raw string length */
+    char priv;
+    int arg[ESC_ARG_SIZ];
+    int narg;              /* nb of args */
+    char mode;
 } CSIEscape;
 
 static CSIEscape escseq;
 
+int term_top, term_bottom;
+int esc;
+
 void tsetchar(char c);
 void tmoveto(int x, int y);
 void tnewline(int first_col);
+void tscrollup(int orig, int n);
+void tclearregion(int x1, int y1, int x2, int y2);
 
 void csireset(void);
 void csiparse(void);
@@ -279,46 +284,39 @@ void csidump(void);
 
 void treset(void)
 {
-    int i, j;
+    // int i, j;
 
-    for(i = 0; i < ROWS; i++) {
-        for(j = 0; j < COLS; j++) {
-            // if(j == 0) {
-            //     cell[i][j].c = 'a';
-            // } else if (j == 2) {
-            //     cell[i][j].c = (i + 1) / 10 + '0';
-            // } else if (j == 3) {
-            //     cell[i][j].c = (i + 1) % 10 + '0';
-            // } else if (j == COLS-1) {
-            //     cell[i][j].c = 'b';
-            // } else {
-                cell[i][j].c = ' ';
-            // }
-        }
-        dirty[i] = 1;
-    }
+    // for(i = 0; i < ROWS; i++) {
+    //     for(j = 0; j < COLS; j++) {
+    //         cell[i][j].c = ' ';
+    //     }
+    //     dirty[i] = 1;
+    // }
+    tclearregion(0, 0, COLS - 1, ROWS - 1);
 
     cursor_x = 0, cursor_y = 0;
     cursor_state = CURSOR_DEFAULT;
+
+    term_top = 0, term_bottom = ROWS - 1;
 
     esc = 0;
 }
 
 void tputc(char c)
 {
-	if(esc & ESC_START) {
-		if(esc & ESC_CSI) {
-			escseq.buf[escseq.len++] = c;
-			if((c >= 0x40 && c <= 0x7E) || escseq.len >= ESC_BUF_SIZ) {
-				esc = 0;
-				csiparse();
+    if(esc & ESC_START) {
+        if(esc & ESC_CSI) {
+            escseq.buf[escseq.len++] = c;
+            if((c >= 0x40 && c <= 0x7E) || escseq.len >= ESC_BUF_SIZ) {
+                esc = 0;
+                csiparse();
                 csihandle();
-			}
+            }
         } else {
             switch(c) {
-			case '[':
-				esc |= ESC_CSI;
-				break;
+            case '[':
+                esc |= ESC_CSI;
+                break;
             default:
                 printf("unknown sequence ESC 0x%02X '%c'\n",
                        c, isprint(c)? c : '.');
@@ -328,6 +326,9 @@ void tputc(char c)
         }
     } else {
         switch(c) {
+        case '\b':
+            tmoveto(cursor_x - 1, cursor_y);
+            break;
         case '\r':
             tmoveto(0, cursor_y);
             break;
@@ -374,63 +375,116 @@ void tmoveto(int x, int y)
 void tnewline(int first_col)
 {
     int y = cursor_y;
-    y++;
+    if(y == term_bottom) {
+        tscrollup(term_top, 1);
+    } else {
+        y++;
+    }
 
     tmoveto(first_col ? 0 : cursor_x, y);
 }
 
+void tscrollup(int orig, int n)
+{
+    int i, j;
+    char temp;
+
+    if(n < 0) n = 0;
+    if(n > term_bottom - orig + 1) n = term_bottom - orig + 1;
+
+    tclearregion(0, orig, COLS - 1, orig + n - 1);
+
+    for(i = orig; i <= term_bottom - n; i++) {
+        for(j = 0; j < COLS; j++) {
+            temp = cell[i][j].c;
+            cell[i][j].c = cell[i+n][j].c;
+            cell[i+n][j].c = temp;
+        }
+
+        dirty[i] = 1;
+        dirty[i+n] = 1;
+    }
+}
+
+void tclearregion(int x1, int y1, int x2, int y2)
+{
+    int x, y, temp;
+
+    if(x1 > x2)
+        temp = x1, x1 = x2, x2 = temp;
+    if(y1 > y2)
+        temp = y1, y1 = y2, y2 = temp;
+
+    if(x1 < 0) x1 = 0;
+    if(x1 > COLS - 1) x1 = COLS - 1;
+    if(y1 < 0) y1 = 0;
+    if(y1 > ROWS - 1) y1 = ROWS - 1;
+
+    if(x2 < 0) x2 = 0;
+    if(x2 > COLS - 1) x2 = COLS - 1;
+    if(y2 < 0) y2 = 0;
+    if(y2 > ROWS - 1) y2 = ROWS - 1;
+
+    for(y = y1; y <= y2; y++) {
+        for(x = x1; x <= x2; x++) {
+            cell[y][x].c = ' ';
+        }
+        dirty[y] = 1;
+    }
+}
+
 void csireset(void)
 {
-	memset(&escseq, 0, sizeof(escseq));
+    memset(&escseq, 0, sizeof(escseq));
 }
 
 void csiparse(void)
 {
-	/* int noarg = 1; */
-	char *p = escseq.buf;
+    /* int noarg = 1; */
+    char *p = escseq.buf;
 
-	escseq.narg = 0;
-	if(*p == '?')
-		escseq.priv = 1, p++;
+    escseq.narg = 0;
+    if(*p == '?')
+        escseq.priv = 1, p++;
 
-	while(p < escseq.buf + escseq.len) {
-		while(isdigit(*p)) {
-			escseq.arg[escseq.narg] *= 10;
-			escseq.arg[escseq.narg] += *p++ - '0'/*, noarg = 0 */;
-		}
-		if(*p == ';' && escseq.narg+1 < ESC_ARG_SIZ)
-			escseq.narg++, p++;
-		else {
-			escseq.mode = *p;
-			escseq.narg++;
-			return;
-		}
-	}
+    while(p < escseq.buf + escseq.len) {
+        while(isdigit(*p)) {
+            escseq.arg[escseq.narg] *= 10;
+            escseq.arg[escseq.narg] += *p++ - '0'/*, noarg = 0 */;
+        }
+        if(*p == ';' && escseq.narg+1 < ESC_ARG_SIZ)
+            escseq.narg++, p++;
+        else {
+            escseq.mode = *p;
+            escseq.narg++;
+            return;
+        }
+    }
 }
 
 void csihandle(void)
 {
-	switch(escseq.mode) {
-	default:
+    switch(escseq.mode) {
+    default:
         printf("unknown csi ");
         csidump();
-		break;
+        break;
     }
 }
 
 void csidump(void)
 {
-	int i;
-	printf("ESC[");
-	for(i = 0; i < escseq.len; i++) {
-		uint c = escseq.buf[i] & 0xff;
-		if(isprint(c)) putchar(c);
-		else if(c == '\n') printf("(\\n)");
-		else if(c == '\r') printf("(\\r)");
-		else if(c == 0x1b) printf("(\\e)");
-		else printf("(%02x)", c);
-	}
-	putchar('\n');
+    int i;
+    printf("ESC[");
+    for(i = 0; i < escseq.len; i++) {
+        uint c = escseq.buf[i] & 0xff;
+        if(isprint(c)) putchar(c);
+        else if(c == '\n') printf("(\\n)");
+        else if(c == '\r') printf("(\\r)");
+        else if(c == 0x1b) printf("(\\e)");
+        else printf("(%02x)", c);
+    }
+    putchar('\n');
 }
 
 /* screen */
@@ -441,15 +495,15 @@ void draw(QWidget *w)
 
 void xdraws(QPainter &painter, QString str, int x, int y, int len)
 {
-//	QString str;
+//  QString str;
 //    str += "aaa ";
 //    str += QChar((y + 1) / 10 + '0');
 //    str += QChar((y + 1) % 10 + '0');
-	QRect rect(x * cell_width, y * cell_height,
-		cell_width * len, cell_height);
+    QRect rect(x * cell_width, y * cell_height,
+        cell_width * len, cell_height);
 #if defined(USE_QT4)
-	painter.drawText(rect, Qt::TextSingleLine, str);
+    painter.drawText(rect, Qt::TextSingleLine, str);
 #elif defined(USE_QTOPIA)
-	painter.drawText(rect, Qt::SingleLine, str);
+    painter.drawText(rect, Qt::SingleLine, str);
 #endif
 }
