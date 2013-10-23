@@ -41,6 +41,7 @@ void tputc(char c);
 /* screen */
 void draw(QWidget *w);
 void xdraws(QPainter &painter, QString str, int x, int y, int len);
+void xdrawcursor(QPainter &painter);
 
 /* widget */
 pid_t g_pid;
@@ -205,6 +206,8 @@ void TermWidget::paintEvent(QPaintEvent *)
         // }
         xdraws(painter, str, 0, y, COLS);
     }
+
+    xdrawcursor(painter);
 }
 
 void TermWidget::keyPressEvent(QKeyEvent *k)
@@ -326,16 +329,18 @@ void tputc(char c)
         }
     } else {
         switch(c) {
-        case '\b':
+        case '\b': // BS
             tmoveto(cursor_x - 1, cursor_y);
             break;
-        case '\r':
+        case '\r': // CR
             tmoveto(0, cursor_y);
             break;
-        case '\n':
+        case '\n': // LF
             tnewline(0);
             break;
-        case '\033':
+        case '\a': // BEL
+            break;
+        case '\033': // ESC
             csireset();
             esc = ESC_START;
             break;
@@ -506,4 +511,16 @@ void xdraws(QPainter &painter, QString str, int x, int y, int len)
 #elif defined(USE_QTOPIA)
     painter.drawText(rect, Qt::SingleLine, str);
 #endif
+}
+
+void xdrawcursor(QPainter &painter)
+{
+    QRect rect(cursor_x * cell_width, cursor_y * cell_height,
+        cell_width, cell_height);
+
+    QRect r = rect;
+
+    r.adjust(1, 1, -1, -1);
+
+    painter.drawRect(r);
 }
