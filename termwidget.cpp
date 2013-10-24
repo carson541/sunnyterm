@@ -32,6 +32,7 @@ struct t_cell {
 
 struct t_cell cell[ROWS][COLS];
 int dirty[ROWS];
+int cursor_fg, cursor_bg;
 int cursor_x, cursor_y;
 int cursor_state;
 
@@ -39,6 +40,28 @@ void treset(void);
 void tputc(char c);
 
 /* screen */
+#define DefaultFG             7
+#define DefaultBG             0
+
+static const QColor palette_xterm[] = { /* AARRGGBB */
+    0xff000000, /* black */
+    0xffcd0000, /* red3 */
+    0xff00cd00, /* green3 */
+    0xffcdcd00, /* yellow3 */
+    0xff0000ee, /* blue2 */
+    0xffcd00cd, /* magenta3 */
+    0xff00cdcd, /* cyan3 */
+    0xffe5e5e5, /* gray90 */
+    0xff7f7f7f, /* gray50 */
+    0xffff0000, /* red */
+    0xff00ff00, /* green */
+    0xffffff00, /* yellow */
+    0xff5c5cff,
+    0xffff00ff, /* magenta */
+    0xff00ffff, /* cyan */
+    0xffffffff  /* white */
+};
+
 void draw(QWidget *w);
 void xdraws(QPainter &painter, QString str, int x, int y, int len);
 void xdrawcursor(QPainter &painter);
@@ -297,6 +320,7 @@ void treset(void)
     // }
     tclearregion(0, 0, COLS - 1, ROWS - 1);
 
+    cursor_fg = DefaultFG, cursor_bg = DefaultBG;
     cursor_x = 0, cursor_y = 0;
     cursor_state = CURSOR_DEFAULT;
 
@@ -500,12 +524,16 @@ void draw(QWidget *w)
 
 void xdraws(QPainter &painter, QString str, int x, int y, int len)
 {
-//  QString str;
-//    str += "aaa ";
-//    str += QChar((y + 1) / 10 + '0');
-//    str += QChar((y + 1) % 10 + '0');
+    QColor color;
+    color = palette_xterm[DefaultFG];
+
     QRect rect(x * cell_width, y * cell_height,
         cell_width * len, cell_height);
+
+    painter.fillRect(rect, palette_xterm[DefaultBG]);
+
+    painter.setPen(color);
+
 #if defined(USE_QT4)
     painter.drawText(rect, Qt::TextSingleLine, str);
 #elif defined(USE_QTOPIA)
