@@ -26,12 +26,19 @@
 #define COLS 80
 #define ROWS 24
 
+#define GLYPH_SET             1
+
 struct t_cell {
     char c;
+    int mode;
+    int fg;
+    int bg;
+    int state;
 };
 
 struct t_cell cell[ROWS][COLS];
 int dirty[ROWS];
+int cursor_mode;
 int cursor_fg, cursor_bg;
 int cursor_x, cursor_y;
 int cursor_state;
@@ -63,8 +70,10 @@ static const QColor palette_xterm[] = { /* AARRGGBB */
 };
 
 void draw(QWidget *w);
-void xdraws(QPainter &painter, QString str, int x, int y, int len);
+void xdraws(QPainter &painter, int fg, int bg,
+            QString str, int x, int y, int len);
 void xdrawcursor(QPainter &painter);
+void xclear(QPainter &painter, int x1, int y1, int x2, int y2);
 
 /* widget */
 pid_t g_pid;
@@ -219,15 +228,47 @@ void TermWidget::paintEvent(QPaintEvent *)
     painter.setFont(cell_font);
 
     int x, y;
+    int ib, ox;
+    int base_fg, new_fg;
+    int base_bg, new_bg;
+    int new_state;
+
     for(y = 0; y < ROWS; y++) {
+        xclear(painter, 0, y, COLS, y);
+
         QString str;
+        ib = ox = 0;
+
         for(x = 0; x < COLS; x++) {
-            str += QChar(cell[y][x].c);
+            new_state = cell[y][x].state;
+            new_fg = cell[y][x].fg;
+            new_bg = cell[y][x].bg;
+
+            if(ib > 0 && (!(new_state & GLYPH_SET) ||
+                          (base_fg != new_fg) ||
+                          (base_bg != new_bg))) {
+                xdraws(painter, base_fg, base_bg, str, ox, y, ib);
+                ib = 0;
+            }
+
+            if(new_state & GLYPH_SET) {
+                if(ib == 0) {
+                    str.clear();
+                    ox = x;
+                    base_fg = new_fg;
+                    base_bg = new_bg;
+                }
+
+                str += QChar(cell[y][x].c);
+                ib ++;
+            }
         }
         // if(y == 0) {
         //     qDebug("str = %s", str.toStdString().c_str());
         // }
-        xdraws(painter, str, 0, y, COLS);
+        if(ib > 0) {
+            xdraws(painter, base_fg, base_bg, str, ox, y, ib);
+        }
     }
 
     xdrawcursor(painter);
@@ -281,6 +322,11 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
 #define ESC_START             1
 #define ESC_CSI               2
 
+#define ATTR_NULL             0
+#define ATTR_REVERSE          1
+#define ATTR_UNDERLINE        2
+#define ATTR_BOLD             4
+
 /* CSI Escape sequence structs */
 /* ESC '[' [[ [<priv>] <arg> [;]] <mode>] */
 typedef struct {
@@ -308,18 +354,13 @@ void csiparse(void);
 void csihandle(void);
 void csidump(void);
 
+void tsetattr(int *attr, int l);
+
 void treset(void)
 {
-    // int i, j;
-
-    // for(i = 0; i < ROWS; i++) {
-    //     for(j = 0; j < COLS; j++) {
-    //         cell[i][j].c = ' ';
-    //     }
-    //     dirty[i] = 1;
-    // }
     tclearregion(0, 0, COLS - 1, ROWS - 1);
 
+    cursor_mode = ATTR_NULL;
     cursor_fg = DefaultFG, cursor_bg = DefaultBG;
     cursor_x = 0, cursor_y = 0;
     cursor_state = CURSOR_DEFAULT;
@@ -385,7 +426,14 @@ void tputc(char c)
 
 void tsetchar(char c)
 {
+    cell[cursor_y][cursor_x].mode = cursor_mode;
+    cell[cursor_y][cursor_x].fg = cursor_fg;
+    cell[cursor_y][cursor_x].bg = cursor_bg;
+
     cell[cursor_y][cursor_x].c = c;
+
+    cell[cursor_y][cursor_x].state |= GLYPH_SET;
+
     dirty[cursor_y] = 1;
 }
 
@@ -416,7 +464,7 @@ void tnewline(int first_col)
 void tscrollup(int orig, int n)
 {
     int i, j;
-    char temp;
+    t_cell temp;
 
     if(n < 0) n = 0;
     if(n > term_bottom - orig + 1) n = term_bottom - orig + 1;
@@ -425,9 +473,9 @@ void tscrollup(int orig, int n)
 
     for(i = orig; i <= term_bottom - n; i++) {
         for(j = 0; j < COLS; j++) {
-            temp = cell[i][j].c;
-            cell[i][j].c = cell[i+n][j].c;
-            cell[i+n][j].c = temp;
+            temp = cell[i][j];
+            cell[i][j] = cell[i+n][j];
+            cell[i+n][j] = temp;
         }
 
         dirty[i] = 1;
@@ -457,6 +505,7 @@ void tclearregion(int x1, int y1, int x2, int y2)
     for(y = y1; y <= y2; y++) {
         for(x = x1; x <= x2; x++) {
             cell[y][x].c = ' ';
+            cell[y][x].state = 0;
         }
         dirty[y] = 1;
     }
@@ -494,6 +543,9 @@ void csiparse(void)
 void csihandle(void)
 {
     switch(escseq.mode) {
+    case 'm': /* SGR -- Terminal attribute (color) */
+        tsetattr(escseq.arg, escseq.narg);
+        break;
     default:
         printf("unknown csi ");
         csidump();
@@ -516,21 +568,47 @@ void csidump(void)
     putchar('\n');
 }
 
+void tsetattr(int *attr, int l)
+{
+    int i;
+
+    for(i = 0; i < l; i++) {
+        switch(attr[i]) {
+        case 0:
+            cursor_mode &= ~(ATTR_REVERSE | ATTR_UNDERLINE | ATTR_BOLD);
+            cursor_fg = DefaultFG;
+            cursor_bg = DefaultBG;
+            break;
+        case 1:
+            cursor_mode |= ATTR_BOLD;
+            break;
+        default:
+            if(attr[i] >= 30 && attr[i] <= 37) {
+                cursor_fg = attr[i] - 30;
+            } else {
+                printf("erresc: gfx attr %d unknown\n", attr[i]), csidump();
+            }
+            break;
+        }
+    }
+}
+
 /* screen */
 void draw(QWidget *w)
 {
     w->update();
 }
 
-void xdraws(QPainter &painter, QString str, int x, int y, int len)
+void xdraws(QPainter &painter, int fg, int bg,
+            QString str, int x, int y, int len)
 {
     QColor color;
-    color = palette_xterm[DefaultFG];
+    color = palette_xterm[fg];
 
     QRect rect(x * cell_width, y * cell_height,
         cell_width * len, cell_height);
 
-    painter.fillRect(rect, palette_xterm[DefaultBG]);
+    painter.fillRect(rect, palette_xterm[bg]);
 
     painter.setPen(color);
 
@@ -551,4 +629,12 @@ void xdrawcursor(QPainter &painter)
     r.adjust(1, 1, -1, -1);
 
     painter.drawRect(r);
+}
+
+void xclear(QPainter &painter, int x1, int y1, int x2, int y2)
+{
+    QRect rect(x1 * cell_width, y1 * cell_height,
+               cell_width * (x2 - x1 + 1), cell_height * (y2 - y1 + 1));
+
+    painter.fillRect(rect, palette_xterm[cursor_bg]);
 }
