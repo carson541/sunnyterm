@@ -28,6 +28,11 @@
 
 #define GLYPH_SET             1
 
+#define ATTR_NULL             0
+#define ATTR_REVERSE          1
+#define ATTR_UNDERLINE        2
+#define ATTR_BOLD             4
+
 struct t_cell {
     char c;
     int mode;
@@ -70,7 +75,8 @@ static const QColor palette_xterm[] = { /* AARRGGBB */
 };
 
 void draw(QWidget *w);
-void xdraws(QPainter &painter, int fg, int bg,
+void xdraws(QPainter &painter,
+            int mode, int fg, int bg,
             QString str, int x, int y, int len);
 void xdrawcursor(QPainter &painter);
 void xclear(QPainter &painter, int x1, int y1, int x2, int y2);
@@ -127,14 +133,10 @@ TermWidget::TermWidget()
     pid_t pid;
     int fd;
 
-//  QFont font("Terminus");
-//  QFont font("Ubuntu Mono");
-//    cell_font = font;
-//  font.setPixelSize(12);
+    // QFont font("Terminus");
+    // QFont font("Ubuntu Mono");
+
     QFont font("Bitstream Vera Sans Mono", 15);
-//  font.setPixelSize(20);
-//    font.setFixedPitch(true);
-//    font.setKerning(false);
     setCellFont(font);
 
     QFontInfo info(font);
@@ -225,10 +227,9 @@ void TermWidget::paintEvent(QPaintEvent *)
 
     QPainter painter(this);
 
-    painter.setFont(cell_font);
-
     int x, y;
     int ib, ox;
+    int base_mode, new_mode;
     int base_fg, new_fg;
     int base_bg, new_bg;
     int new_state;
@@ -241,13 +242,21 @@ void TermWidget::paintEvent(QPaintEvent *)
 
         for(x = 0; x < COLS; x++) {
             new_state = cell[y][x].state;
+            new_mode = cell[y][x].mode;
             new_fg = cell[y][x].fg;
             new_bg = cell[y][x].bg;
 
             if(ib > 0 && (!(new_state & GLYPH_SET) ||
+                          (base_mode != new_mode) ||
                           (base_fg != new_fg) ||
                           (base_bg != new_bg))) {
-                xdraws(painter, base_fg, base_bg, str, ox, y, ib);
+                if(base_mode & ATTR_BOLD) {
+                    cell_font.setBold(true);
+                } else {
+                    cell_font.setBold(false);
+                }
+                painter.setFont(cell_font);
+                xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
                 ib = 0;
             }
 
@@ -255,6 +264,7 @@ void TermWidget::paintEvent(QPaintEvent *)
                 if(ib == 0) {
                     str.clear();
                     ox = x;
+                    base_mode = new_mode;
                     base_fg = new_fg;
                     base_bg = new_bg;
                 }
@@ -267,7 +277,13 @@ void TermWidget::paintEvent(QPaintEvent *)
         //     qDebug("str = %s", str.toStdString().c_str());
         // }
         if(ib > 0) {
-            xdraws(painter, base_fg, base_bg, str, ox, y, ib);
+            if(base_mode & ATTR_BOLD) {
+                cell_font.setBold(true);
+            } else {
+                cell_font.setBold(false);
+            }
+            painter.setFont(cell_font);
+            xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
         }
     }
 
@@ -321,11 +337,6 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
 
 #define ESC_START             1
 #define ESC_CSI               2
-
-#define ATTR_NULL             0
-#define ATTR_REVERSE          1
-#define ATTR_UNDERLINE        2
-#define ATTR_BOLD             4
 
 /* CSI Escape sequence structs */
 /* ESC '[' [[ [<priv>] <arg> [;]] <mode>] */
@@ -599,9 +610,16 @@ void draw(QWidget *w)
     w->update();
 }
 
-void xdraws(QPainter &painter, int fg, int bg,
+void xdraws(QPainter &painter,
+            int mode, int fg, int bg,
             QString str, int x, int y, int len)
 {
+    if(mode & ATTR_BOLD) {
+        if(fg < 8) {
+            fg += 8;
+        }
+    }
+
     QColor color;
     color = palette_xterm[fg];
 
