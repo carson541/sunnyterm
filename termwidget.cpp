@@ -9,6 +9,7 @@
 #include <qwidget.h>
 #include <qfont.h>
 #include <qtimer.h>
+#include <qcolor.h>
 #include <qpainter.h>
 #endif
 
@@ -136,12 +137,20 @@ TermWidget::TermWidget()
     // QFont font("Terminus");
     // QFont font("Ubuntu Mono");
 
+#if defined(USE_QT4)
     QFont font("Bitstream Vera Sans Mono", 15);
+#elif defined(USE_QTOPIA)
+    QFont font("Terminus", 16);
+#endif
     setCellFont(font);
 
     QFontInfo info(font);
     QString family = info.family();
+#if defined(USE_QT4)
     // qDebug("family = %s", family.toStdString().c_str());
+#elif defined(USE_QTOPIA)
+    // qDebug("family = %s", family.latin1());
+#endif
 
 #if defined(USE_QT4)
     setGeometry(600, 200, cell_width * COLS + 2, cell_height * ROWS);
@@ -250,11 +259,13 @@ void TermWidget::paintEvent(QPaintEvent *)
                           (base_mode != new_mode) ||
                           (base_fg != new_fg) ||
                           (base_bg != new_bg))) {
+#if defined(USE_QT4)
                 if(base_mode & ATTR_BOLD) {
                     cell_font.setBold(true);
                 } else {
                     cell_font.setBold(false);
                 }
+#endif
                 painter.setFont(cell_font);
                 xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
                 ib = 0;
@@ -262,7 +273,11 @@ void TermWidget::paintEvent(QPaintEvent *)
 
             if(new_state & GLYPH_SET) {
                 if(ib == 0) {
+#if defined(USE_QT4)
                     str.clear();
+#elif defined(USE_QTOPIA)
+                    str.truncate(0);
+#endif
                     ox = x;
                     base_mode = new_mode;
                     base_fg = new_fg;
@@ -277,11 +292,13 @@ void TermWidget::paintEvent(QPaintEvent *)
         //     qDebug("str = %s", str.toStdString().c_str());
         // }
         if(ib > 0) {
+#if defined(USE_QT4)
             if(base_mode & ATTR_BOLD) {
                 cell_font.setBold(true);
             } else {
                 cell_font.setBold(false);
             }
+#endif
             painter.setFont(cell_font);
             xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
         }
@@ -644,7 +661,9 @@ void xdrawcursor(QPainter &painter)
 
     QRect r = rect;
 
+#if defined(USE_QT4)
     r.adjust(1, 1, -1, -1);
+#endif
 
     painter.drawRect(r);
 }
