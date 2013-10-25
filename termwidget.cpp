@@ -613,6 +613,8 @@ void tsetattr(int *attr, int l)
         default:
             if(attr[i] >= 30 && attr[i] <= 37) {
                 cursor_fg = attr[i] - 30;
+            } else if(attr[i] >= 40 && attr[i] <= 47) {
+                cursor_bg = attr[i] - 40;
             } else {
                 printf("erresc: gfx attr %d unknown\n", attr[i]), csidump();
             }
