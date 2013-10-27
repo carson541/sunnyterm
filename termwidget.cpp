@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QColor>
 #include <QPainter>
+#include <QTextCodec>
 #elif defined(USE_QTOPIA)
 #include <qwidget.h>
 #include <qfont.h>
@@ -134,11 +135,9 @@ TermWidget::TermWidget()
     pid_t pid;
     int fd;
 
-    // QFont font("Terminus");
-    // QFont font("Ubuntu Mono");
-
 #if defined(USE_QT4)
-    QFont font("Bitstream Vera Sans Mono", 15);
+//    QFont font("Bitstream Vera Sans Mono", 15);
+    QFont font("Ubuntu Mono", 15);
 #elif defined(USE_QTOPIA)
     QFont font("Terminus", 16);
 #endif
@@ -199,6 +198,10 @@ bool TermWidget::setCellFont(QFont &font)
     cell_height = fm.height();
     // qDebug("cell_width = %d", cell_width);
     // qDebug("cell_height = %d", cell_height);
+    // QString s1 = QString::fromUtf8("test");
+    // QString s2 = QString::fromUtf8("中文");
+    // qDebug("cell_width_en = %d", fm.width(s1));
+    // qDebug("cell_width_zh = %d", fm.width(s2));
 
     QFontMetrics qm(font);
 //    qDebug("%d", qm.width("Hello"));
@@ -236,6 +239,22 @@ void TermWidget::paintEvent(QPaintEvent *)
 
     QPainter painter(this);
 
+#if 1 // GBK
+    QTextCodec *codec = QTextCodec::codecForName("GBK");
+#endif
+
+#if 0 // debug, test
+    painter.setFont(cell_font);
+    const char *s = "test\xd6\xd0\xce\xc4test";
+    QString s2 = QString::fromUtf8("中文test中文");
+
+    QByteArray line = QByteArray(s);
+    QString str = codec->toUnicode(line);
+    painter.drawText(10, 40, str);
+    painter.drawText(10, 40+24, s2);
+    return;
+#endif
+
     int x, y;
     int ib, ox;
     int base_mode, new_mode;
@@ -247,6 +266,9 @@ void TermWidget::paintEvent(QPaintEvent *)
         xclear(painter, 0, y, COLS, y);
 
         QString str;
+#if 1 // GBK
+        QByteArray btr;
+#endif
         ib = ox = 0;
 
         for(x = 0; x < COLS; x++) {
@@ -267,6 +289,9 @@ void TermWidget::paintEvent(QPaintEvent *)
                 }
 #endif
                 painter.setFont(cell_font);
+#if 1 // GBK
+                str = codec->toUnicode(btr);
+#endif
                 xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
                 ib = 0;
             }
@@ -275,6 +300,9 @@ void TermWidget::paintEvent(QPaintEvent *)
                 if(ib == 0) {
 #if defined(USE_QT4)
                     str.clear();
+#if 1 // GBK
+                    btr.clear();
+#endif
 #elif defined(USE_QTOPIA)
                     str.truncate(0);
 #endif
@@ -284,7 +312,11 @@ void TermWidget::paintEvent(QPaintEvent *)
                     base_bg = new_bg;
                 }
 
+#if 1 // GBK
+                btr.append(cell[y][x].c);
+#else
                 str += QChar(cell[y][x].c);
+#endif
                 ib ++;
             }
         }
@@ -300,6 +332,9 @@ void TermWidget::paintEvent(QPaintEvent *)
             }
 #endif
             painter.setFont(cell_font);
+#if 1 // GBK
+            str = codec->toUnicode(btr);
+#endif
             xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
         }
     }
