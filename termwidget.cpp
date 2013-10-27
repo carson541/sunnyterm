@@ -606,6 +606,32 @@ void csiparse(void)
 void csihandle(void)
 {
     switch(escseq.mode) {
+    case 'H': /* CUP -- Move to <row> <col> */
+        if(!escseq.arg[0]) escseq.arg[0] = 1;
+        if(!escseq.arg[1]) escseq.arg[1] = 1;
+        tmoveto(escseq.arg[1] - 1, escseq.arg[0] - 1);
+        break;
+    case 'J': /* ED -- Clear screen */
+        switch(escseq.arg[0]) {
+        case 0: /* below */
+            tclearregion(cursor_x, cursor_y, COLS - 1, cursor_y);
+            if(cursor_y < ROWS - 1)
+                tclearregion(0, cursor_y + 1, COLS - 1, ROWS - 1);
+            break;
+        case 1: /* above */
+            if(cursor_y > 1)
+                tclearregion(0, 0, COLS - 1, cursor_y - 1);
+            tclearregion(0, cursor_y, cursor_x, cursor_y);
+            break;
+        case 2: /* all */
+            tclearregion(0, 0, COLS - 1, ROWS - 1);
+            break;
+        default:
+            printf("unknown csi ");
+            csidump();
+            break;
+        }
+        break;
     case 'm': /* SGR -- Terminal attribute (color) */
         tsetattr(escseq.arg, escseq.narg);
         break;
