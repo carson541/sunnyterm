@@ -34,6 +34,7 @@
 #define ATTR_REVERSE          1
 #define ATTR_UNDERLINE        2
 #define ATTR_BOLD             4
+#define ATTR_BLINK            8
 
 struct t_cell {
     char c;
@@ -611,6 +612,20 @@ void csihandle(void)
         if(!escseq.arg[1]) escseq.arg[1] = 1;
         tmoveto(escseq.arg[1] - 1, escseq.arg[0] - 1);
         break;
+    case 'I': /* font */
+        switch(escseq.arg[0]) {
+        case 0: // back to normal
+            break;
+        case 1: // SongTi
+            break;
+        case 2: // HeiTi
+            break;
+        case 3: // KaiTi
+            break;
+        default:
+            break;
+        }
+        break;
     case 'J': /* ED -- Clear screen */
         switch(escseq.arg[0]) {
         case 0: /* below */
@@ -629,6 +644,19 @@ void csihandle(void)
         default:
             printf("unknown csi ");
             csidump();
+            break;
+        }
+        break;
+    case 'K': /* EL -- Clear line */
+        switch(escseq.arg[0]) {
+        case 0: /* right */
+            tclearregion(cursor_x, cursor_y, COLS - 1, cursor_y);
+            break;
+        case 1: /* left */
+            tclearregion(0, cursor_y, cursor_x, cursor_y);
+            break;
+        case 2: /* all */
+            tclearregion(0, cursor_y, COLS - 1, cursor_y);
             break;
         }
         break;
@@ -671,6 +699,12 @@ void tsetattr(int *attr, int l)
         case 1:
             cursor_mode |= ATTR_BOLD;
             break;
+		case 5:
+			cursor_mode |= ATTR_BLINK;
+			break;
+		case 7:
+			cursor_mode |= ATTR_REVERSE;
+			break;
         default:
             if(attr[i] >= 30 && attr[i] <= 37) {
                 cursor_fg = attr[i] - 30;
@@ -694,6 +728,12 @@ void xdraws(QPainter &painter,
             int mode, int fg, int bg,
             QString str, int x, int y, int len)
 {
+    int temp;
+
+    if(mode & ATTR_REVERSE) {
+		temp = fg, fg = bg, bg = temp;
+    }
+
     if(mode & ATTR_BOLD) {
         if(fg < 8) {
             fg += 8;

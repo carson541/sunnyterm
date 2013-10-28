@@ -2,3 +2,7 @@ x) more attr
 unknown csi ESC[H
 unknown csi ESC[J
 unknown csi ESC[23;1H
+unknown csi ESC[K
+unknown csi ESC[3I
+attr 5 unknown
+attr 7 unknown
