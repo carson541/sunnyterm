@@ -36,8 +36,12 @@
 #define ATTR_BOLD             4
 #define ATTR_BLINK            8
 
+#define UTF_SIZ               4
+
+#define LEN(a)     (sizeof(a) / sizeof(a[0]))
+
 struct t_cell {
-    char c;
+    char c[UTF_SIZ];
     int mode;
     int fg;
     int bg;
@@ -52,7 +56,7 @@ int cursor_x, cursor_y;
 int cursor_state;
 
 void treset(void);
-void tputc(char c);
+void tputc(char *c);
 
 /* screen */
 #define DefaultFG             7
@@ -103,32 +107,159 @@ void sigchld(int)
         exit(EXIT_FAILURE);
 }
 
+/* bit macro */
+#undef B0
+enum { B0=1, B1=2, B2=4, B3=8, B4=16, B5=32, B6=64, B7=128 };
+
+int utf8decode(char *s, long *u) {
+    uchar c;
+    int i, n, rtn;
+
+    rtn = 1;
+    c = *s;
+    if(~c & B7) { /* 0xxxxxxx */
+        *u = c;
+        return rtn;
+    } else if((c & (B7|B6|B5)) == (B7|B6)) { /* 110xxxxx */
+        *u = c&(B4|B3|B2|B1|B0);
+        n = 1;
+    } else if((c & (B7|B6|B5|B4)) == (B7|B6|B5)) { /* 1110xxxx */
+        *u = c&(B3|B2|B1|B0);
+        n = 2;
+    } else if((c & (B7|B6|B5|B4|B3)) == (B7|B6|B5|B4)) { /* 11110xxx */
+        *u = c & (B2|B1|B0);
+        n = 3;
+    } else
+        goto invalid;
+    for(i = n, ++s; i > 0; --i, ++rtn, ++s) {
+        c = *s;
+        if((c & (B7|B6)) != B7) /* 10xxxxxx */
+            goto invalid;
+        *u <<= 6;
+        *u |= c & (B5|B4|B3|B2|B1|B0);
+    }
+    if((n == 1 && *u < 0x80) ||
+       (n == 2 && *u < 0x800) ||
+       (n == 3 && *u < 0x10000) ||
+       (*u >= 0xD800 && *u <= 0xDFFF))
+        goto invalid;
+    return rtn;
+invalid:
+    *u = 0xFFFD;
+    return rtn;
+}
+
+int utf8encode(long *u, char *s) {
+    uchar *sp;
+    ulong uc;
+    int i, n;
+
+    sp = (uchar*) s;
+    uc = *u;
+    if(uc < 0x80) {
+        *sp = uc; /* 0xxxxxxx */
+        return 1;
+    } else if(*u < 0x800) {
+        *sp = (uc >> 6) | (B7|B6); /* 110xxxxx */
+        n = 1;
+    } else if(uc < 0x10000) {
+        *sp = (uc >> 12) | (B7|B6|B5); /* 1110xxxx */
+        n = 2;
+    } else if(uc <= 0x10FFFF) {
+        *sp = (uc >> 18) | (B7|B6|B5|B4); /* 11110xxx */
+        n = 3;
+    } else {
+        goto invalid;
+    }
+    for(i=n,++sp; i>0; --i,++sp)
+        *sp = ((uc >> 6*(i-1)) & (B5|B4|B3|B2|B1|B0)) | B7; /* 10xxxxxx */
+    return n+1;
+invalid:
+    /* U+FFFD */
+    *s++ = '\xEF';
+    *s++ = '\xBF';
+    *s = '\xBD';
+    return 3;
+}
+
+/* use this if your buffer is less than UTF_SIZ, it returns 1 if you can decode
+   UTF-8 otherwise return 0 */
+int isfullutf8(char *s, int b) {
+    uchar *c1, *c2, *c3;
+
+    c1 = (uchar *) s;
+    c2 = (uchar *) ++s;
+    c3 = (uchar *) ++s;
+    if(b < 1)
+        return 0;
+    else if((*c1&(B7|B6|B5)) == (B7|B6) && b == 1)
+        return 0;
+    else if((*c1&(B7|B6|B5|B4)) == (B7|B6|B5) &&
+        ((b == 1) ||
+        ((b == 2) && (*c2&(B7|B6)) == B7)))
+        return 0;
+    else if((*c1&(B7|B6|B5|B4|B3)) == (B7|B6|B5|B4) &&
+        ((b == 1) ||
+        ((b == 2) && (*c2&(B7|B6)) == B7) ||
+        ((b == 3) && (*c2&(B7|B6)) == B7 && (*c3&(B7|B6)) == B7)))
+        return 0;
+    else
+        return 1;
+}
+
+int utf8size(char *s) {
+    uchar c = *s;
+
+    if(~c&B7)
+        return 1;
+    else if((c&(B7|B6|B5)) == (B7|B6))
+        return 2;
+    else if((c&(B7|B6|B5|B4)) == (B7|B6|B5))
+        return 3;
+    else
+        return 4;
+}
+
 void ttyread(void)
 {
-    char buf[256];
-    int count;
-    char c;
-    int i;
+    static char buf[256];
+    static int buflen = 0;
+    char *ptr;
+    char s[UTF_SIZ];
+    int charsize; /* size of utf8 char in bytes */
+    long utf8c;
+    int ret;
 
-    count = read(g_fd, buf, sizeof(buf));
-
-    if(count > 0) {
-        // qDebug("read %d", count);
+    /* append read bytes to unprocessed bytes */
+    ret = read(g_fd, buf+buflen, LEN(buf) - buflen);
+    if(ret > 0) {
+        qDebug("read %d", ret);
     }
 
 #if 0
     // dump
-    for(i = 0; i < count; i++) {
+    for(int i = 0; i < ret; i++) {
         if(i % 16 == 0 && i != 0) printf("\n");
-        printf("%.2x ", buf[i]);
+        printf("%.2x ", (unsigned char)buf[i+buflen]);
     }
     printf("\n");
 #endif
 
-    for(i = 0; i < count; i++) {
-        c = buf[i];
-        tputc(c);
+    /* process every complete utf8 char */
+    buflen += ret;
+    ptr = buf;
+    while(buflen >= UTF_SIZ || isfullutf8(ptr,buflen)) {
+        charsize = utf8decode(ptr, &utf8c);
+        memset(s, 0, UTF_SIZ);
+        utf8encode(&utf8c, s);
+//        printf("%s",s);
+        tputc(s);
+        ptr    += charsize;
+        buflen -= charsize;
     }
+
+    /* keep any uncomplete utf8 char for the next call */
+    memmove(buf, ptr, buflen);
 }
 
 TermWidget::TermWidget()
@@ -168,6 +299,7 @@ TermWidget::TermWidget()
             "bash", 0
         };
         execve("/bin/bash", (char * const *)argv, NULL);
+//        execve("test/test", (char * const *)argv, NULL);
     }
 
 //    qDebug("father");
@@ -240,7 +372,7 @@ void TermWidget::paintEvent(QPaintEvent *)
 
     QPainter painter(this);
 
-#if 1 // GBK
+#if 0 // GBK
     QTextCodec *codec = QTextCodec::codecForName("GBK");
 #endif
 
@@ -267,7 +399,7 @@ void TermWidget::paintEvent(QPaintEvent *)
         xclear(painter, 0, y, COLS, y);
 
         QString str;
-#if 1 // GBK
+#if 0 // GBK
         QByteArray btr;
 #endif
         ib = ox = 0;
@@ -290,7 +422,7 @@ void TermWidget::paintEvent(QPaintEvent *)
                 }
 #endif
                 painter.setFont(cell_font);
-#if 1 // GBK
+#if 0 // GBK
                 str = codec->toUnicode(btr);
 #endif
                 xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
@@ -301,7 +433,7 @@ void TermWidget::paintEvent(QPaintEvent *)
                 if(ib == 0) {
 #if defined(USE_QT4)
                     str.clear();
-#if 1 // GBK
+#if 0 // GBK
                     btr.clear();
 #endif
 #elif defined(USE_QTOPIA)
@@ -313,10 +445,11 @@ void TermWidget::paintEvent(QPaintEvent *)
                     base_bg = new_bg;
                 }
 
-#if 1 // GBK
+#if 0 // GBK
                 btr.append(cell[y][x].c);
 #else
-                str += QChar(cell[y][x].c);
+                QString s = QString::fromLocal8Bit(cell[y][x].c);
+                str += s;
 #endif
                 ib ++;
             }
@@ -333,7 +466,7 @@ void TermWidget::paintEvent(QPaintEvent *)
             }
 #endif
             painter.setFont(cell_font);
-#if 1 // GBK
+#if 0 // GBK
             str = codec->toUnicode(btr);
 #endif
             xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
@@ -407,7 +540,7 @@ static CSIEscape escseq;
 int term_top, term_bottom;
 int esc;
 
-void tsetchar(char c);
+void tsetchar(char *c);
 void tmoveto(int x, int y);
 void tnewline(int first_col);
 void tscrollup(int orig, int n);
@@ -434,30 +567,31 @@ void treset(void)
     esc = 0;
 }
 
-void tputc(char c)
+void tputc(char *c)
 {
+    char ascii = *c;
     if(esc & ESC_START) {
         if(esc & ESC_CSI) {
-            escseq.buf[escseq.len++] = c;
-            if((c >= 0x40 && c <= 0x7E) || escseq.len >= ESC_BUF_SIZ) {
+            escseq.buf[escseq.len++] = ascii;
+            if((ascii >= 0x40 && ascii <= 0x7E) || escseq.len >= ESC_BUF_SIZ) {
                 esc = 0;
                 csiparse();
                 csihandle();
             }
         } else {
-            switch(c) {
+            switch(ascii) {
             case '[':
                 esc |= ESC_CSI;
                 break;
             default:
                 printf("unknown sequence ESC 0x%02X '%c'\n",
-                       c, isprint(c)? c : '.');
+                       ascii, isprint(ascii)? ascii : '.');
                 esc = 0;
                 break;
             }
         }
     } else {
-        switch(c) {
+        switch(ascii) {
         case '\b': // BS
             tmoveto(cursor_x - 1, cursor_y);
             break;
@@ -488,13 +622,13 @@ void tputc(char c)
     }
 }
 
-void tsetchar(char c)
+void tsetchar(char *c)
 {
     cell[cursor_y][cursor_x].mode = cursor_mode;
     cell[cursor_y][cursor_x].fg = cursor_fg;
     cell[cursor_y][cursor_x].bg = cursor_bg;
 
-    cell[cursor_y][cursor_x].c = c;
+    memcpy(cell[cursor_y][cursor_x].c, c, UTF_SIZ);
 
     cell[cursor_y][cursor_x].state |= GLYPH_SET;
 
@@ -568,7 +702,6 @@ void tclearregion(int x1, int y1, int x2, int y2)
 
     for(y = y1; y <= y2; y++) {
         for(x = x1; x <= x2; x++) {
-            cell[y][x].c = ' ';
             cell[y][x].state = 0;
         }
         dirty[y] = 1;
@@ -699,12 +832,12 @@ void tsetattr(int *attr, int l)
         case 1:
             cursor_mode |= ATTR_BOLD;
             break;
-		case 5:
-			cursor_mode |= ATTR_BLINK;
-			break;
-		case 7:
-			cursor_mode |= ATTR_REVERSE;
-			break;
+        case 5:
+            cursor_mode |= ATTR_BLINK;
+            break;
+        case 7:
+            cursor_mode |= ATTR_REVERSE;
+            break;
         default:
             if(attr[i] >= 30 && attr[i] <= 37) {
                 cursor_fg = attr[i] - 30;
@@ -731,7 +864,7 @@ void xdraws(QPainter &painter,
     int temp;
 
     if(mode & ATTR_REVERSE) {
-		temp = fg, fg = bg, bg = temp;
+        temp = fg, fg = bg, bg = temp;
     }
 
     if(mode & ATTR_BOLD) {
