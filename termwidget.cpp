@@ -84,7 +84,7 @@ static const QColor palette_xterm[] = { /* AARRGGBB */
 void draw(QWidget *w);
 void xdraws(QPainter &painter,
             int mode, int fg, int bg,
-            QString str, int x, int y, int len);
+            QString str, int x, int y, int charlen, int bytelen);
 void xdrawcursor(QPainter &painter);
 void xclear(QPainter &painter, int x1, int y1, int x2, int y2);
 
@@ -233,7 +233,7 @@ void ttyread(void)
     /* append read bytes to unprocessed bytes */
     ret = read(g_fd, buf+buflen, LEN(buf) - buflen);
     if(ret > 0) {
-        qDebug("read %d", ret);
+//        qDebug("read %d", ret);
     }
 
 #if 0
@@ -389,11 +389,12 @@ void TermWidget::paintEvent(QPaintEvent *)
 #endif
 
     int x, y;
-    int ib, ox;
+    int ic, ib, ox, sl;
     int base_mode, new_mode;
     int base_fg, new_fg;
     int base_bg, new_bg;
     int new_state;
+    char new_c[UTF_SIZ];
 
     for(y = 0; y < ROWS; y++) {
         xclear(painter, 0, y, COLS, y);
@@ -402,13 +403,14 @@ void TermWidget::paintEvent(QPaintEvent *)
 #if 0 // GBK
         QByteArray btr;
 #endif
-        ib = ox = 0;
+        ic = ib = ox = 0;
 
         for(x = 0; x < COLS; x++) {
             new_state = cell[y][x].state;
             new_mode = cell[y][x].mode;
             new_fg = cell[y][x].fg;
             new_bg = cell[y][x].bg;
+            memcpy(new_c, cell[y][x].c, UTF_SIZ);
 
             if(ib > 0 && (!(new_state & GLYPH_SET) ||
                           (base_mode != new_mode) ||
@@ -425,8 +427,8 @@ void TermWidget::paintEvent(QPaintEvent *)
 #if 0 // GBK
                 str = codec->toUnicode(btr);
 #endif
-                xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
-                ib = 0;
+                xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ic, ib);
+                ic = ib = 0;
             }
 
             if(new_state & GLYPH_SET) {
@@ -444,14 +446,15 @@ void TermWidget::paintEvent(QPaintEvent *)
                     base_fg = new_fg;
                     base_bg = new_bg;
                 }
-
+                sl = utf8size(new_c);
 #if 0 // GBK
                 btr.append(cell[y][x].c);
 #else
                 QString s = QString::fromLocal8Bit(cell[y][x].c);
                 str += s;
 #endif
-                ib ++;
+                ib += sl;
+                ic ++;
             }
         }
         // if(y == 0) {
@@ -469,7 +472,7 @@ void TermWidget::paintEvent(QPaintEvent *)
 #if 0 // GBK
             str = codec->toUnicode(btr);
 #endif
-            xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ib);
+            xdraws(painter, base_mode, base_fg, base_bg, str, ox, y, ic, ib);
         }
     }
 
@@ -859,7 +862,7 @@ void draw(QWidget *w)
 
 void xdraws(QPainter &painter,
             int mode, int fg, int bg,
-            QString str, int x, int y, int len)
+            QString str, int x, int y, int charlen, int bytelen)
 {
     int temp;
 
@@ -877,7 +880,7 @@ void xdraws(QPainter &painter,
     color = palette_xterm[fg];
 
     QRect rect(x * cell_width, y * cell_height,
-        cell_width * len, cell_height);
+        cell_width * bytelen, cell_height);
 
     painter.fillRect(rect, palette_xterm[bg]);
 
@@ -888,6 +891,8 @@ void xdraws(QPainter &painter,
 #elif defined(USE_QTOPIA)
     painter.drawText(rect, Qt::SingleLine, str);
 #endif
+
+    charlen = charlen;
 }
 
 void xdrawcursor(QPainter &painter)
