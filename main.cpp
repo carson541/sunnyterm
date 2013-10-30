@@ -11,14 +11,14 @@
 #if defined(USE_QT4)
 #include <QApplication>
 #elif defined(USE_QTOPIA)
-#include <qapplication.h>
+#include <qpe/qpeapplication.h>
 #endif
 
 #include "termwidget.h"
 
 int main(int argc, char **argv)
 {
-    QApplication app(argc, argv);
+    QPEApplication app(argc, argv);
     TermWidget tw;
 
 #if defined(USE_QTOPIA)
