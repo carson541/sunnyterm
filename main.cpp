@@ -18,7 +18,11 @@
 
 int main(int argc, char **argv)
 {
+#if defined(USE_QT4)
+    QApplication app(argc, argv);
+#elif defined(USE_QTOPIA)
     QPEApplication app(argc, argv);
+#endif
     TermWidget tw;
 
 #if defined(USE_QTOPIA)
