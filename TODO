@@ -1,4 +1,5 @@
-x) utf8
-x) input from IM
+x) input from linux IM
+x) input from zaurus
+x) gbk
 x) blink
 attr 5 blink

@@ -6,6 +6,7 @@
 #include <QColor>
 #include <QPainter>
 #include <QTextCodec>
+#include <QInputMethodEvent>
 #elif defined(USE_QTOPIA)
 #include <qwidget.h>
 #include <qfont.h>
@@ -315,6 +316,11 @@ TermWidget::TermWidget()
     readTimer->start(1000);
 
     treset();
+
+#if defined(USE_QT4)
+    setFocusPolicy(Qt::ClickFocus);
+    setAttribute(Qt::WA_InputMethodEnabled, true);
+#endif
 }
 
 bool TermWidget::setCellFont(QFont &font)
@@ -508,6 +514,13 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
 
 #if defined(USE_QT4)
     QByteArray data = k->text().toLocal8Bit();
+#if 0
+    printf("%d: ", data.count());
+    for(int i = 0; i < data.count(); i++) {
+        printf("%.2x ", (unsigned char)data.constData()[i]);
+    }
+    printf("\n");
+#endif
     int n = write(g_fd, data.constData(), data.count());
 #elif defined(USE_QTOPIA)
     QByteArray data = k->text().local8Bit();
@@ -516,6 +529,48 @@ void TermWidget::keyPressEvent(QKeyEvent *k)
     // qDebug("write: %d", n);
     n = n; // dummy
 }
+
+#if defined(USE_QT4)
+/*
+ * bash needs:
+ * set meta-flag on
+ * set input-meta on
+ * set output-meta on
+ * set convert-meta off
+ * in ~/.inputrc
+ */
+void TermWidget::inputMethodEvent(QInputMethodEvent *e)
+{
+//    qDebug("inputMethodEvent");
+
+    QString commitString = e->commitString();
+    if(!commitString.isEmpty()) {
+//        qDebug("commitString not empty");
+//        qDebug("commitString len = %d", commitString.size());
+        QByteArray data = commitString.toLocal8Bit();
+#if 0
+        printf("%d: ", data.count());
+        for(int i = 0; i < data.count(); i++) {
+            printf("%.2x ", (unsigned char)data.constData()[i]);
+        }
+        printf("\n");
+#endif
+        int n = write(g_fd, data.constData(), data.count());
+        n = n; // dummy
+    } else {
+//        qDebug("commitString empty");
+    }
+}
+#endif
+
+#if defined(USE_QT4)
+// QVariant TermWidget::inputMethodQuery(Qt::InputMethodQuery property) const
+// {
+//     qDebug("inputMethodQuery");
+
+//     return QVariant();
+// }
+#endif
 
 /* term */
 #define ESC_BUF_SIZ   256

@@ -6,6 +6,7 @@
 #include <QFont>
 #include <QKeyEvent>
 #include <QTimer>
+#include <QInputMethodEvent>
 #elif defined(USE_QTOPIA)
 #include <qwidget.h>
 #include <qtimer.h>
@@ -25,6 +26,10 @@ private slots:
 protected:
     void paintEvent(QPaintEvent *);
     void keyPressEvent(QKeyEvent *);
+#if defined(USE_QT4)
+    void inputMethodEvent(QInputMethodEvent *);
+//    QVariant inputMethodQuery(Qt::InputMethodQuery property) const;
+#endif
 
 private:
     QTimer *readTimer;
